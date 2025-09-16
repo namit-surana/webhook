@@ -31,6 +31,16 @@ async function extractDataFromUrl(url) {
     // Check if URL contains API key parameter
     if (url.includes('api_key=') || url.includes('apikey=')) {
       console.log(`🔑 API key found in URL`);
+      
+      // Extract API key from URL and add to headers
+      const apiKeyMatch = url.match(/[?&]api_key=([^&]+)/);
+      if (apiKeyMatch) {
+        const apiKey = apiKeyMatch[1];
+        headers['Authorization'] = `Bearer ${apiKey}`;
+        headers['X-API-Key'] = apiKey;
+        headers['X-Api-Key'] = apiKey;
+        console.log(`🔑 Added API key to headers: ${apiKey.substring(0, 8)}...`);
+      }
     }
     
     const response = await axios.get(url, {
@@ -84,9 +94,19 @@ async function extractDataFromUrl(url) {
     return extractedContent;
   } catch (error) {
     console.error(`❌ Error extracting data from ${url}:`, error.message);
+    
+    // Log more details about the error
+    if (error.response) {
+      console.error(`Status: ${error.response.status}`);
+      console.error(`Headers:`, error.response.headers);
+      console.error(`Response data:`, error.response.data);
+    }
+    
     return {
       type: 'error',
       error: error.message,
+      status: error.response?.status,
+      responseData: error.response?.data,
       url: url,
       timestamp: new Date().toISOString()
     };
@@ -156,9 +176,10 @@ app.post('/webhook', async (req, res) => {
       const datalabApiKey = 'QP4dh9aa9gzIbKxJ0Xj9Rz0anAyqYxGgIajQqvuGDhA';
       urlsToExtract.forEach((url, index) => {
         if (url.includes('datalab.to') && !url.includes('api_key=') && !url.includes('apikey=')) {
+          // Try different API key parameter names
           const separator = url.includes('?') ? '&' : '?';
-          urlsToExtract[index] = `${url}${separator}api_key=${datalabApiKey}`;
-          console.log(`🔑 Auto-added API key to datalab.to URL`);
+          urlsToExtract[index] = `${url}${separator}api_key=${datalabApiKey}&key=${datalabApiKey}&token=${datalabApiKey}`;
+          console.log(`🔑 Auto-added API key to datalab.to URL with multiple parameter names`);
         }
       });
     }
