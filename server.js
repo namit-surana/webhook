@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const axios = require('axios');
+const cheerio = require('cheerio');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,6 +15,74 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
 // Store webhook data in memory (in production, use a database)
 const webhookData = [];
+const extractedData = [];
+
+// Helper function to extract data from URL
+async function extractDataFromUrl(url) {
+  try {
+    console.log(`🔍 Extracting data from URL: ${url}`);
+    
+    const response = await axios.get(url, {
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
+
+    const contentType = response.headers['content-type'] || '';
+    let extractedContent = {};
+
+    if (contentType.includes('application/json')) {
+      // Handle JSON data
+      extractedContent = {
+        type: 'json',
+        data: response.data,
+        url: url,
+        timestamp: new Date().toISOString()
+      };
+    } else if (contentType.includes('text/html')) {
+      // Handle HTML data
+      const $ = cheerio.load(response.data);
+      extractedContent = {
+        type: 'html',
+        title: $('title').text().trim(),
+        description: $('meta[name="description"]').attr('content') || '',
+        text: $('body').text().replace(/\s+/g, ' ').trim(),
+        links: $('a[href]').map((i, el) => $(el).attr('href')).get(),
+        images: $('img[src]').map((i, el) => $(el).attr('src')).get(),
+        url: url,
+        timestamp: new Date().toISOString()
+      };
+    } else if (contentType.includes('text/plain') || contentType.includes('text/markdown')) {
+      // Handle plain text or markdown
+      extractedContent = {
+        type: 'text',
+        content: response.data,
+        url: url,
+        timestamp: new Date().toISOString()
+      };
+    } else {
+      // Handle other content types
+      extractedContent = {
+        type: 'other',
+        contentType: contentType,
+        content: response.data,
+        url: url,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    return extractedContent;
+  } catch (error) {
+    console.error(`❌ Error extracting data from ${url}:`, error.message);
+    return {
+      type: 'error',
+      error: error.message,
+      url: url,
+      timestamp: new Date().toISOString()
+    };
+  }
+}
 
 // Health check endpoint
 app.get('/', (req, res) => {
@@ -25,7 +95,7 @@ app.get('/', (req, res) => {
 });
 
 // Main webhook endpoint - accepts POST requests
-app.post('/webhook', (req, res) => {
+app.post('/webhook', async (req, res) => {
   try {
     const webhookPayload = {
       id: Date.now().toString(),
@@ -49,12 +119,50 @@ app.post('/webhook', (req, res) => {
       body: webhookPayload.body
     });
 
+    // Check if webhook contains URLs to extract data from
+    const urlsToExtract = [];
+    
+    // Look for URLs in the webhook body
+    if (req.body && typeof req.body === 'object') {
+      const bodyStr = JSON.stringify(req.body);
+      const urlRegex = /https?:\/\/[^\s"<>]+/g;
+      const foundUrls = bodyStr.match(urlRegex);
+      if (foundUrls) {
+        urlsToExtract.push(...foundUrls);
+      }
+    }
+
+    // Look for URLs in headers
+    if (req.headers.referer) {
+      urlsToExtract.push(req.headers.referer);
+    }
+
+    // Extract data from URLs if found
+    let extractedResults = [];
+    if (urlsToExtract.length > 0) {
+      console.log(`🔍 Found ${urlsToExtract.length} URLs to extract data from`);
+      
+      for (const url of urlsToExtract) {
+        try {
+          const extractedContent = await extractDataFromUrl(url);
+          extractedResults.push(extractedContent);
+          extractedData.push(extractedContent);
+          
+          console.log(`✅ Successfully extracted data from: ${url}`);
+        } catch (error) {
+          console.error(`❌ Failed to extract data from ${url}:`, error.message);
+        }
+      }
+    }
+
     // Respond with success
     res.status(200).json({
       success: true,
       message: 'Webhook received successfully',
       webhookId: webhookPayload.id,
-      timestamp: webhookPayload.timestamp
+      timestamp: webhookPayload.timestamp,
+      urlsFound: urlsToExtract.length,
+      extractedData: extractedResults.length > 0 ? extractedResults : null
     });
 
   } catch (error) {
@@ -74,6 +182,93 @@ app.get('/webhooks', (req, res) => {
     count: webhookData.length,
     webhooks: webhookData
   });
+});
+
+// Extract data from URL endpoint
+app.post('/extract', async (req, res) => {
+  try {
+    const { url } = req.body;
+    
+    if (!url) {
+      return res.status(400).json({
+        success: false,
+        message: 'URL is required'
+      });
+    }
+
+    console.log(`🔍 Manual extraction requested for: ${url}`);
+    const extractedContent = await extractDataFromUrl(url);
+    extractedData.push(extractedContent);
+
+    res.json({
+      success: true,
+      message: 'Data extracted successfully',
+      extractedData: extractedContent
+    });
+
+  } catch (error) {
+    console.error('❌ Error extracting data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+});
+
+// Get all extracted data endpoint
+app.get('/extracted', (req, res) => {
+  res.json({
+    success: true,
+    count: extractedData.length,
+    extractedData: extractedData
+  });
+});
+
+// Extract data from multiple URLs
+app.post('/extract-batch', async (req, res) => {
+  try {
+    const { urls } = req.body;
+    
+    if (!urls || !Array.isArray(urls)) {
+      return res.status(400).json({
+        success: false,
+        message: 'URLs array is required'
+      });
+    }
+
+    console.log(`🔍 Batch extraction requested for ${urls.length} URLs`);
+    const results = [];
+
+    for (const url of urls) {
+      try {
+        const extractedContent = await extractDataFromUrl(url);
+        results.push(extractedContent);
+        extractedData.push(extractedContent);
+      } catch (error) {
+        results.push({
+          type: 'error',
+          error: error.message,
+          url: url,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Extracted data from ${urls.length} URLs`,
+      results: results
+    });
+
+  } catch (error) {
+    console.error('❌ Error in batch extraction:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
 });
 
 // Get specific webhook by ID
@@ -103,6 +298,15 @@ app.delete('/webhooks', (req, res) => {
   });
 });
 
+// Clear all extracted data
+app.delete('/extracted', (req, res) => {
+  extractedData.length = 0;
+  res.json({
+    success: true,
+    message: 'All extracted data cleared'
+  });
+});
+
 // Catch-all for undefined routes
 app.use('*', (req, res) => {
   res.status(404).json({
@@ -110,10 +314,14 @@ app.use('*', (req, res) => {
     message: 'Route not found',
     availableEndpoints: [
       'GET / - Health check',
-      'POST /webhook - Receive webhook',
+      'POST /webhook - Receive webhook (auto-extracts URLs)',
       'GET /webhooks - List all webhooks',
       'GET /webhook/:id - Get specific webhook',
-      'DELETE /webhooks - Clear all webhooks'
+      'DELETE /webhooks - Clear all webhooks',
+      'POST /extract - Extract data from single URL',
+      'POST /extract-batch - Extract data from multiple URLs',
+      'GET /extracted - List all extracted data',
+      'DELETE /extracted - Clear all extracted data'
     ]
   });
 });
