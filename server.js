@@ -151,6 +151,16 @@ app.post('/webhook', async (req, res) => {
           }
         });
       }
+      
+      // Auto-add API key to datalab.to URLs
+      const datalabApiKey = 'QP4dh9aa9gzIbKxJ0Xj9Rz0anAyqYxGgIajQqvuGDhA';
+      urlsToExtract.forEach((url, index) => {
+        if (url.includes('datalab.to') && !url.includes('api_key=') && !url.includes('apikey=')) {
+          const separator = url.includes('?') ? '&' : '?';
+          urlsToExtract[index] = `${url}${separator}api_key=${datalabApiKey}`;
+          console.log(`🔑 Auto-added API key to datalab.to URL`);
+        }
+      });
     }
 
     // Look for URLs in headers
