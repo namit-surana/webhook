@@ -28,18 +28,14 @@ async function extractDataFromUrl(url) {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     };
     
-    // Check if URL contains API key parameter
-    if (url.includes('api_key=') || url.includes('apikey=')) {
-      console.log(`🔑 API key found in URL`);
-      
-      // Extract API key from URL and add to headers
+    // Add API key to headers if found in URL
+    if (url.includes('api_key=')) {
       const apiKeyMatch = url.match(/[?&]api_key=([^&]+)/);
       if (apiKeyMatch) {
         const apiKey = apiKeyMatch[1];
         headers['Authorization'] = `Bearer ${apiKey}`;
         headers['X-API-Key'] = apiKey;
-        headers['X-Api-Key'] = apiKey;
-        console.log(`🔑 Added API key to headers: ${apiKey.substring(0, 8)}...`);
+        console.log(`🔑 Added API key to headers`);
       }
     }
     
@@ -94,19 +90,9 @@ async function extractDataFromUrl(url) {
     return extractedContent;
   } catch (error) {
     console.error(`❌ Error extracting data from ${url}:`, error.message);
-    
-    // Log more details about the error
-    if (error.response) {
-      console.error(`Status: ${error.response.status}`);
-      console.error(`Headers:`, error.response.headers);
-      console.error(`Response data:`, error.response.data);
-    }
-    
     return {
       type: 'error',
       error: error.message,
-      status: error.response?.status,
-      responseData: error.response?.data,
       url: url,
       timestamp: new Date().toISOString()
     };
@@ -160,34 +146,17 @@ app.post('/webhook', async (req, res) => {
         urlsToExtract.push(...foundUrls);
       }
       
-      // Check if there's an API key in the payload
-      if (req.body.api_key) {
-        console.log(`🔑 API key found in webhook payload`);
-        // Add API key to URLs that don't have one
-        urlsToExtract.forEach((url, index) => {
-          if (!url.includes('api_key=') && !url.includes('apikey=')) {
-            const separator = url.includes('?') ? '&' : '?';
-            urlsToExtract[index] = `${url}${separator}api_key=${req.body.api_key}`;
-          }
-        });
-      }
-      
       // Auto-add API key to datalab.to URLs
       const datalabApiKey = 'QP4dh9aa9gzIbKxJ0Xj9Rz0anAyqYxGgIajQqvuGDhA';
       urlsToExtract.forEach((url, index) => {
-        if (url.includes('datalab.to') && !url.includes('api_key=') && !url.includes('apikey=')) {
-          // Try different API key parameter names
+        if (url.includes('datalab.to') && !url.includes('api_key=')) {
           const separator = url.includes('?') ? '&' : '?';
           urlsToExtract[index] = `${url}${separator}api_key=${datalabApiKey}&key=${datalabApiKey}&token=${datalabApiKey}`;
-          console.log(`🔑 Auto-added API key to datalab.to URL with multiple parameter names`);
+          console.log(`🔑 Auto-added API key to datalab.to URL`);
         }
       });
     }
 
-    // Look for URLs in headers
-    if (req.headers.referer) {
-      urlsToExtract.push(req.headers.referer);
-    }
 
     // Extract data from URLs if found
     let extractedResults = [];
@@ -243,9 +212,7 @@ app.post('/webhook', async (req, res) => {
       success: true,
       message: 'Webhook received successfully',
       webhookId: webhookPayload.id,
-      timestamp: webhookPayload.timestamp,
-      urlsFound: urlsToExtract.length,
-      extractedData: extractedResults.length > 0 ? extractedResults : null
+      urlsFound: urlsToExtract.length
     });
 
   } catch (error) {
