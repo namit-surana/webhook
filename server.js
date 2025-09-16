@@ -149,6 +149,37 @@ app.post('/webhook', async (req, res) => {
           extractedData.push(extractedContent);
           
           console.log(`✅ Successfully extracted data from: ${url}`);
+          
+          // Display extracted data in terminal
+          console.log('\n' + '='.repeat(80));
+          console.log(`📄 EXTRACTED DATA FROM: ${url}`);
+          console.log('='.repeat(80));
+          console.log(`Type: ${extractedContent.type}`);
+          console.log(`Timestamp: ${extractedContent.timestamp}`);
+          console.log('-'.repeat(40));
+          
+          if (extractedContent.type === 'html') {
+            console.log(`Title: ${extractedContent.title}`);
+            console.log(`Description: ${extractedContent.description}`);
+            console.log(`\nText Content (first 500 chars):`);
+            console.log(extractedContent.text.substring(0, 500) + '...');
+            console.log(`\nLinks found: ${extractedContent.links.length}`);
+            console.log(`Images found: ${extractedContent.images.length}`);
+          } else if (extractedContent.type === 'json') {
+            console.log('JSON Data:');
+            console.log(JSON.stringify(extractedContent.data, null, 2));
+          } else if (extractedContent.type === 'text') {
+            console.log('Text Content:');
+            console.log(extractedContent.content.substring(0, 1000) + '...');
+          } else if (extractedContent.type === 'error') {
+            console.log(`❌ Error: ${extractedContent.error}`);
+          } else {
+            console.log('Raw Content:');
+            console.log(JSON.stringify(extractedContent, null, 2));
+          }
+          
+          console.log('='.repeat(80) + '\n');
+          
         } catch (error) {
           console.error(`❌ Failed to extract data from ${url}:`, error.message);
         }
@@ -200,6 +231,36 @@ app.post('/extract', async (req, res) => {
     const extractedContent = await extractDataFromUrl(url);
     extractedData.push(extractedContent);
 
+    // Display extracted data in terminal
+    console.log('\n' + '='.repeat(80));
+    console.log(`📄 MANUAL EXTRACTION FROM: ${url}`);
+    console.log('='.repeat(80));
+    console.log(`Type: ${extractedContent.type}`);
+    console.log(`Timestamp: ${extractedContent.timestamp}`);
+    console.log('-'.repeat(40));
+    
+    if (extractedContent.type === 'html') {
+      console.log(`Title: ${extractedContent.title}`);
+      console.log(`Description: ${extractedContent.description}`);
+      console.log(`\nText Content (first 500 chars):`);
+      console.log(extractedContent.text.substring(0, 500) + '...');
+      console.log(`\nLinks found: ${extractedContent.links.length}`);
+      console.log(`Images found: ${extractedContent.images.length}`);
+    } else if (extractedContent.type === 'json') {
+      console.log('JSON Data:');
+      console.log(JSON.stringify(extractedContent.data, null, 2));
+    } else if (extractedContent.type === 'text') {
+      console.log('Text Content:');
+      console.log(extractedContent.content.substring(0, 1000) + '...');
+    } else if (extractedContent.type === 'error') {
+      console.log(`❌ Error: ${extractedContent.error}`);
+    } else {
+      console.log('Raw Content:');
+      console.log(JSON.stringify(extractedContent, null, 2));
+    }
+    
+    console.log('='.repeat(80) + '\n');
+
     res.json({
       success: true,
       message: 'Data extracted successfully',
@@ -245,13 +306,51 @@ app.post('/extract-batch', async (req, res) => {
         const extractedContent = await extractDataFromUrl(url);
         results.push(extractedContent);
         extractedData.push(extractedContent);
+        
+        // Display extracted data in terminal
+        console.log('\n' + '='.repeat(80));
+        console.log(`📄 BATCH EXTRACTION FROM: ${url}`);
+        console.log('='.repeat(80));
+        console.log(`Type: ${extractedContent.type}`);
+        console.log(`Timestamp: ${extractedContent.timestamp}`);
+        console.log('-'.repeat(40));
+        
+        if (extractedContent.type === 'html') {
+          console.log(`Title: ${extractedContent.title}`);
+          console.log(`Description: ${extractedContent.description}`);
+          console.log(`\nText Content (first 500 chars):`);
+          console.log(extractedContent.text.substring(0, 500) + '...');
+          console.log(`\nLinks found: ${extractedContent.links.length}`);
+          console.log(`Images found: ${extractedContent.images.length}`);
+        } else if (extractedContent.type === 'json') {
+          console.log('JSON Data:');
+          console.log(JSON.stringify(extractedContent.data, null, 2));
+        } else if (extractedContent.type === 'text') {
+          console.log('Text Content:');
+          console.log(extractedContent.content.substring(0, 1000) + '...');
+        } else if (extractedContent.type === 'error') {
+          console.log(`❌ Error: ${extractedContent.error}`);
+        } else {
+          console.log('Raw Content:');
+          console.log(JSON.stringify(extractedContent, null, 2));
+        }
+        
+        console.log('='.repeat(80) + '\n');
+        
       } catch (error) {
-        results.push({
+        const errorResult = {
           type: 'error',
           error: error.message,
           url: url,
           timestamp: new Date().toISOString()
-        });
+        };
+        results.push(errorResult);
+        
+        console.log('\n' + '='.repeat(80));
+        console.log(`❌ BATCH EXTRACTION ERROR: ${url}`);
+        console.log('='.repeat(80));
+        console.log(`Error: ${error.message}`);
+        console.log('='.repeat(80) + '\n');
       }
     }
 
