@@ -59,6 +59,53 @@ function validateWebhookToken(req, res, next) {
   next();
 }
 
+// Helper function to check URL authentication requirements
+async function checkUrlAuth(url) {
+  try {
+    console.log(`🔍 Checking authentication requirements for: ${url}`);
+    
+    const response = await axios.get(url, {
+      timeout: 5000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      validateStatus: function (status) {
+        return status < 500; // Accept any status < 500
+      }
+    });
+    
+    const authInfo = {
+      url: url,
+      status: response.status,
+      requiresAuth: response.status === 401 || response.status === 403,
+      authHeaders: {},
+      contentType: response.headers['content-type'] || 'unknown',
+      timestamp: new Date().toISOString()
+    };
+    
+    // Check for authentication headers
+    if (response.headers['www-authenticate']) {
+      authInfo.authHeaders['www-authenticate'] = response.headers['www-authenticate'];
+    }
+    if (response.headers['x-api-key-required']) {
+      authInfo.authHeaders['x-api-key-required'] = response.headers['x-api-key-required'];
+    }
+    if (response.headers['authorization-required']) {
+      authInfo.authHeaders['authorization-required'] = response.headers['authorization-required'];
+    }
+    
+    return authInfo;
+  } catch (error) {
+    return {
+      url: url,
+      status: error.response?.status || 'error',
+      requiresAuth: error.response?.status === 401 || error.response?.status === 403,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    };
+  }
+}
+
 // Helper function to extract data from URL with optional token
 async function extractDataFromUrl(url, token = null) {
   try {
@@ -624,6 +671,59 @@ app.delete('/extracted', (req, res) => {
   });
 });
 
+// Check URL authentication requirements
+app.post('/check-auth', async (req, res) => {
+  try {
+    const { url } = req.body;
+    
+    if (!url) {
+      return res.status(400).json({
+        success: false,
+        message: 'URL is required'
+      });
+    }
+
+    console.log(`🔍 Authentication check requested for: ${url}`);
+    const authInfo = await checkUrlAuth(url);
+    
+    // Display auth info in terminal
+    console.log('\n' + '='.repeat(80));
+    console.log(`🔐 AUTHENTICATION CHECK FOR: ${url}`);
+    console.log('='.repeat(80));
+    console.log(`Status Code: ${authInfo.status}`);
+    console.log(`Requires Auth: ${authInfo.requiresAuth ? 'YES' : 'NO'}`);
+    console.log(`Content Type: ${authInfo.contentType}`);
+    console.log(`Timestamp: ${authInfo.timestamp}`);
+    
+    if (Object.keys(authInfo.authHeaders).length > 0) {
+      console.log('\nAuth Headers Found:');
+      Object.entries(authInfo.authHeaders).forEach(([key, value]) => {
+        console.log(`  ${key}: ${value}`);
+      });
+    }
+    
+    if (authInfo.error) {
+      console.log(`\nError: ${authInfo.error}`);
+    }
+    
+    console.log('='.repeat(80) + '\n');
+
+    res.json({
+      success: true,
+      message: 'Authentication check completed',
+      authInfo: authInfo
+    });
+
+  } catch (error) {
+    console.error('❌ Error checking authentication:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+});
+
 // Catch-all for undefined routes
 app.use('*', (req, res) => {
   res.status(404).json({
@@ -642,7 +742,8 @@ app.use('*', (req, res) => {
       'DELETE /extracted - Clear all extracted data',
       'GET /tokens - List all tokens',
       'POST /tokens - Create new token',
-      'DELETE /tokens/:token - Delete token'
+      'DELETE /tokens/:token - Delete token',
+      'POST /check-auth - Check URL authentication requirements'
     ]
   });
 });
